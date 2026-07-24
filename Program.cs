@@ -36,6 +36,8 @@ namespace CMDB_service
         private string _exePath;
         private string _workingDirectory;
         private string _logFile;
+        private int _delayLow;
+        private int _delayHigh;
 
         protected override void OnStart(string[] args)
         {
@@ -84,7 +86,28 @@ namespace CMDB_service
             {
                 lock (_logLock)
                 {
+                    try
+                    {
+                        var dir = Path.GetDirectoryName(_logFile);
+                        if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir)) Directory.CreateDirectory(dir);
+                    }
+                    catch { }
+
                     File.AppendAllText(_logFile, DateTime.Now.ToString("s") + " " + message + Environment.NewLine);
+
+                    try
+                    {
+                        const int maxLines = 1000;
+                        var lines = File.ReadAllLines(_logFile);
+                        if (lines.Length > maxLines)
+                        {
+                            int skip = lines.Length - maxLines;
+                            var keep = new string[maxLines];
+                            Array.Copy(lines, skip, keep, 0, maxLines);
+                            File.WriteAllLines(_logFile, keep);
+                        }
+                    }
+                    catch { }
                 }
             }
             catch
@@ -125,8 +148,8 @@ namespace CMDB_service
                             p.WaitForExit();
                         }
 
-                        int delay = rand.Next(360000, 720000);
-                        Log($"Process exited. Sleeping {delay} ms");
+                        int delay = rand.Next(_delayLow, _delayHigh);
+                        Log($"Process exited. Sleeping {delay / 1000} s");
                         token.WaitHandle.WaitOne(delay);
                     }
                     else
@@ -155,6 +178,9 @@ namespace CMDB_service
             string defaultExe = @"C:\Program Files (x86)\CRX_Analytics\CRX_CMDB\CRX-CMDB-V2.exe";
             string defaultWork = @"C:\Program Files (x86)\CRX_Analytics\CRX_CMDB\";
             string defaultLog = @"C:\ProgramData\CRX_Analytics\CMDB_service.log";
+            // Defaults are specified in seconds
+            int defaultDelayLow = 360; // 6 minutes
+            int defaultDelayHigh = 720; // 12 minutes
 
             try
             {
@@ -167,16 +193,36 @@ namespace CMDB_service
                     string exe = null;
                     string work = null;
                     string log = null;
+                    int delayLow = defaultDelayLow * 1000;
+                    int delayHigh = defaultDelayHigh * 1000;
 
                     foreach (var el in addElements)
                     {
                         var key = (string)el.Attribute("key");
                         var val = (string)el.Attribute("value");
                         if (string.Equals(key, "ExePath", StringComparison.OrdinalIgnoreCase)) exe = val;
-                        if (string.Equals(key, "WorkingDirectory", StringComparison.OrdinalIgnoreCase)) work = val;
-                        if (string.Equals(key, "LogFile", StringComparison.OrdinalIgnoreCase)) log = val;
-                        int DelayLow = int.Parse((string)el.Attribute("DelayLow"));
-                        int DelayHigh = int.Parse((string)el.Attribute("DelayHigh"));
+                        else if (string.Equals(key, "WorkingDirectory", StringComparison.OrdinalIgnoreCase)) work = val;
+                        else if (string.Equals(key, "LogFile", StringComparison.OrdinalIgnoreCase)) log = val;
+                        else if (string.Equals(key, "DelayLow", StringComparison.OrdinalIgnoreCase))
+                        {
+                            int parsed;
+                            if (int.TryParse(val, out parsed)) delayLow = parsed * 1000; // value in seconds -> convert to ms
+                        }
+                        else if (string.Equals(key, "DelayHigh", StringComparison.OrdinalIgnoreCase))
+                        {
+                            int parsed;
+                            if (int.TryParse(val, out parsed)) delayHigh = parsed * 1000; // value in seconds -> convert to ms
+                        }
+                    }
+
+                    // Ensure sensible ordering
+                    if (delayLow <= 0) delayLow = defaultDelayLow * 1000;
+                    if (delayHigh <= 0) delayHigh = defaultDelayHigh * 1000;
+                    if (delayLow >= delayHigh)
+                    {
+                        // swap if misconfigured
+                        var t = delayLow; delayLow = delayHigh; delayHigh = t;
+                        if (delayLow == delayHigh) { delayLow = defaultDelayLow; delayHigh = defaultDelayHigh; }
                     }
 
                     _exePath = string.IsNullOrWhiteSpace(exe) ? defaultExe : exe;
@@ -192,12 +238,20 @@ namespace CMDB_service
                         if (Path.IsPathRooted(log)) _logFile = log;
                         else _logFile = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, log);
                     }
+
+                    _delayLow = delayLow;
+                    _delayHigh = delayHigh;
+
+                    Log("Delaylow: " + delayLow);
+                    Log("DelayHigh: " + delayHigh);
                 }
                 else
                 {
                     _exePath = defaultExe;
                     _workingDirectory = defaultWork;
                     _logFile = defaultLog;
+                    _delayLow = defaultDelayLow * 1000;
+                    _delayHigh = defaultDelayHigh * 1000;
                 }
             }
             catch (Exception ex)
@@ -205,6 +259,8 @@ namespace CMDB_service
                 _exePath = defaultExe;
                 _workingDirectory = defaultWork;
                 _logFile = defaultLog;
+                _delayLow = defaultDelayLow * 1000;
+                _delayHigh = defaultDelayHigh * 1000;
                 try { File.AppendAllText(_logFile, DateTime.Now.ToString("s") + " Error reading config: " + ex + Environment.NewLine); } catch { }
             }
         }
