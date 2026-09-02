@@ -175,9 +175,9 @@ namespace CMDB_service
         private void LoadConfiguration()
         {
             // Defaults
-            string defaultExe = @"C:\Program Files (x86)\CRX_Analytics\CRX_CMDB\CRX-CMDB-V2.exe";
-            string defaultWork = @"C:\Program Files (x86)\CRX_Analytics\CRX_CMDB\";
-            string defaultLog = @"C:\ProgramData\CRX_Analytics\CMDB_service.log";
+            string defaultExe = @"C:\Program Files (x86)\CRXServiceAnalytics\CMDB-DataCollector\CRX-CMDB-V2.exe";
+            string defaultWork = @"C:\Program Files (x86)\CRXServiceAnalytics\CMDB-DataCollector\";
+            string defaultLog = @"C:\ProgramData\CRXServiceAnalytics\CMDB_service.log";
             // Defaults are specified in seconds
             int defaultDelayLow = 360; // 6 minutes
             int defaultDelayHigh = 720; // 12 minutes
